@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Grinding Game Online</title>
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            overflow: hidden;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: sans-serif;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading game, please wait...</div>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js";
+
+        async function main() {
+            const pyodide = await loadPyodide();
+            document.getElementById("loading").innerText = "Installing pygame-wasm...";
+
+            await pyodide.loadPackage("micropip");
+            await pyodide.runPythonAsync(`
+                import micropip
+                await micropip.install("pygame-wasm")
+            `);
+
+            document.getElementById("loading").innerText = "Starting game...";
+
+            const response = await fetch("grinding_game.py");
+            const code = await response.text();
+
+            pyodide.runPython(code);
+
+            document.getElementById("loading").remove();
+        }
+
+        main();
+    </script>
+</body>
+</html>
