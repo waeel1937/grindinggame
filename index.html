@@ -2,864 +2,177 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Python Game</title>
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+    <title>CNC Grinding Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
+    <style>
+        body {
+            margin: 0;
+            background: #1e1e1e;
+            color: #ccc;
+            font-family: sans-serif;
+            text-align: center;
+        }
+
+        #game {
+            margin: 0 auto;
+        }
+    </style>
 </head>
 <body>
-    <h1>Python Game (Text-Based)</h1>
-    <button id="run">Run Game</button>
-    <pre id="output"></pre>
+    <h1>CNC Grinding Simulator</h1>
+    <div id="game"></div>
 
     <script>
-        async function main() {
-            const pyodide = await loadPyodide();
-            document.getElementById("run").addEventListener("click", async () => {
-                let code = `
+        const config = {
+            type: Phaser.AUTO,
+            width: 900,
+            height: 650,
+            backgroundColor: '#2e2e2e',
+            parent: 'game',
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
 
-                import pygame
-import sys
-import math
-import random
-from pygame import gfxdraw
+        let graphics;
+        let statusBox;
+        let sparks = [];
 
-# Initialize pygame
-pygame.init()
+        const INITIAL_ROUGHNESS = 0.15;
+        const TARGET_ROUGHNESS = 0.01;
+        let grinding = false;
+        let grindingAngle = 0;
+        let grindingPressure = 1.0;
+        let roughness = INITIAL_ROUGHNESS;
 
-# Constants
-WIDTH, HEIGHT = 800, 600
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-GRAY = (200, 200, 200)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 100, 255)
-YELLOW = (255, 255, 0)
+        const imperfections = [];
 
-# Game parameters
-INITIAL_ROUGHNESS = 0.15  # Initial roughness of the cylinder (0.0 to 1.0)
-TARGET_ROUGHNESS = 0.01   # Target roughness for a perfect circle
-GRINDING_PRECISION = 0.005  # How precise each grinding action is
-MAX_PRESSURE = 5.0        # Maximum grinding pressure
-PRESSURE_STEP = 0.1       # How much pressure changes with arrow keys
-TIME_LIMIT = 120          # Time limit in seconds
-WOBBLE_FACTOR = 0.3       # How much the cylinder wobbles during grinding
+        const game = new Phaser.Game(config);
 
-class GrindingGame:
-    def __init__(self):
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Precision Grinding Simulator")
-        self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont(None, 28)
-        self.title_font = pygame.font.SysFont(None, 40)
-        
-        self.reset_game()
-    
-    def reset_game(self):
-        self.cylinder_roughness = INITIAL_ROUGHNESS
-        self.grinding_pressure = 1.0
-        self.grinding_angle = 0
-        self.grinding_active = False
-        self.time_left = TIME_LIMIT
-        self.game_over = False
-        self.victory = False
-        self.score = 0
-        self.wobble = 0
-        self.last_grind_time = 0
-        self.heat_level = 0
-        self.tool_wear = 0
-        self.cylinder_radius = 100
-        self.cylinder_center = (WIDTH // 2, HEIGHT // 2)
-        self.particles = []
-        
-        # Store the original cylinder shape
-        self.original_shape = []
-        
-        # Generate realistic pattern of imperfections on the cylinder
-        self.imperfections = []
-        
-        # Create systematic imperfections (like an off-center cylinder)
-        offset_angle = random.uniform(0, 2*math.pi)
-        offset_magnitude = random.uniform(5, 15)
-        
-        # Add various types of imperfections
-        
-        # 1. Systematic eccentricity (off-center rotation)
-        for angle in range(0, 360, 5):
-            angle_rad = math.radians(angle)
-            magnitude = math.cos(angle_rad - offset_angle) * offset_magnitude
-            self.imperfections.append((angle_rad, abs(magnitude)))
-        
-        # 2. Random local imperfections (bumps and divots)
-        for _ in range(5):
-            center_angle = random.uniform(0, 2*math.pi)
-            center_magnitude = random.uniform(8, 20)
-            width = random.uniform(0.2, 0.6)
-            
-            # Create a cluster of imperfections around this center
-            for i in range(5):
-                angle = center_angle + random.uniform(-width, width)
-                # Normalize angle to 0-2π range
-                angle = angle % (2*math.pi)
-                magnitude = center_magnitude * (1 - random.uniform(0, 0.5))
-                self.imperfections.append((angle, magnitude))
-        
-        # 3. Add subtle wave patterns (systematic machining errors)
-        wave_frequency = random.randint(3, 6)  # Number of waves around the cylinder
-        wave_magnitude = random.uniform(3, 8)   # Height of waves
-        
-        for angle in range(0, 360, 3):
-            angle_rad = math.radians(angle)
-            magnitude = math.sin(angle_rad * wave_frequency) * wave_magnitude
-            self.imperfections.append((angle_rad, abs(magnitude)))
-        
-        # Calculate initial roughness from imperfections
-        total_imperfection = sum(imp[1] for imp in self.imperfections)
-        self.cylinder_roughness = total_imperfection / 400
-        
-        # Save original shape for comparison
-        self.original_imperfections = self.imperfections.copy()
-    
-    def handle_events(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    return False
-                elif event.key == pygame.K_SPACE:
-                    self.grinding_active = not self.grinding_active
-                elif event.key == pygame.K_r:
-                    self.reset_game()
-            
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            self.grinding_angle = (self.grinding_angle - 2) % 360
-        if keys[pygame.K_RIGHT]:
-            self.grinding_angle = (self.grinding_angle + 2) % 360
-        if keys[pygame.K_UP]:
-            self.grinding_pressure = min(self.grinding_pressure + PRESSURE_STEP, MAX_PRESSURE)
-        if keys[pygame.K_DOWN]:
-            self.grinding_pressure = max(self.grinding_pressure - PRESSURE_STEP, 0)
-        
-        return True
-    
-    def update(self, dt):
-        if self.game_over:
-            return
-        
-        # Update time
-        self.time_left -= dt
-        if self.time_left <= 0:
-            self.time_left = 0
-            self.game_over = True
-            return
-        
-        # Update grinding effect
-        if self.grinding_active:
-            # Calculate grinding efficiency based on angle and pressure
-            angle_rad = math.radians(self.grinding_angle)
-            
-            # Apply grinding in an arc around the current angle (more realistic)
-            grinding_arc_width = math.radians(30 + self.grinding_pressure * 5)  # Wider arc with more pressure
-            
-            # Track if any grinding happened this frame
-            grinding_happened = False
-            material_removed = 0
-            
-            # Create visible shavings/particles during grinding
-            if hasattr(self, 'particles'):
-                self.particles = [p for p in self.particles if p[3] > 0]  # Remove expired particles
-            else:
-                self.particles = []
-            
-            # Apply grinding effect to all imperfections within the grinding arc
-            for i, (imp_angle, imp_magnitude) in enumerate(self.imperfections):
-                # Calculate angle difference considering the circular nature
-                angle_diff = min(abs(imp_angle - angle_rad), 2*math.pi - abs(imp_angle - angle_rad))
-                
-                # Check if this imperfection is within the grinding arc
-                if angle_diff < grinding_arc_width / 2:
-                    # Calculate grinding effect - pressure affects grinding speed
-                    # More effect in the center of the arc, less at the edges
-                    arc_position_factor = 1 - (angle_diff / (grinding_arc_width / 2))
-                    effect = GRINDING_PRECISION * self.grinding_pressure * arc_position_factor
-                    
-                    # Calculate position for particle effects
-                    particle_radius = self.cylinder_radius + imp_magnitude
-                    particle_x = self.cylinder_center[0] + particle_radius * math.cos(imp_angle)
-                    particle_y = self.cylinder_center[1] + particle_radius * math.sin(imp_angle)
-                    
-                    # Too much pressure can cause damage or inefficiency
-                    if self.grinding_pressure > 3.0:
-                        # Increase wobble and heat when pressure is too high
-                        self.wobble = min(self.wobble + 0.05, WOBBLE_FACTOR)
-                        self.heat_level = min(self.heat_level + 0.03, 1.0)
-                        
-                        # High pressure with high heat can damage the workpiece
-                        if self.heat_level > 0.7:
-                            effect *= 0.5  # Less effective when too hot
-                            
-                            # Chance to increase roughness if too aggressive
-                            if random.random() < 0.1:
-                                self.cylinder_roughness += 0.005
-                                # Create new imperfection or increase existing one
-                                new_angle = random.uniform(0, 2*math.pi)
-                                self.imperfections.append((new_angle, random.uniform(0.5, 2.0)))
-                                
-                                # Add "chip" particles showing material damage
-                                for _ in range(3):
-                                    spread = math.radians(random.uniform(-30, 30))
-                                    speed = random.uniform(50, 150)
-                                    size = random.uniform(3, 6)
-                                    lifetime = random.uniform(0.5, 1.2)
-                                    color = RED
-                                    self.particles.append([
-                                        particle_x, particle_y,
-                                        math.cos(imp_angle + spread) * speed,
-                                        math.sin(imp_angle + spread) * speed,
-                                        size, lifetime, color
-                                    ])
-                    else:
-                        # Good pressure range increases efficiency
-                        if 1.5 <= self.grinding_pressure <= 2.5:
-                            effect *= 1.5
-                        
-                        # Reduce wobble and heat when pressure is appropriate
-                        self.wobble = max(self.wobble - 0.01, 0)
-                        self.heat_level = max(self.heat_level - 0.01, 0)
-                    
-                    # Apply tool wear effect
-                    if self.tool_wear > 0.5:
-                        effect *= (1 - (self.tool_wear - 0.5))
-                    
-                    # Calculate actual material removed this frame
-                    material_to_remove = min(imp_magnitude, effect)
-                    material_removed += material_to_remove
-                    
-                    # Update imperfection magnitude
-                    new_magnitude = max(0, imp_magnitude - effect)
-                    self.imperfections[i] = (imp_angle, new_magnitude)
-                    grinding_happened = True
-                    
-                    # Create metal shavings particles
-                    if material_to_remove > 0:
-                        for _ in range(int(material_to_remove * 10)):
-                            # Calculate particle direction (opposite of grinding angle)
-                            particle_dir = imp_angle + math.pi + random.uniform(-0.5, 0.5)
-                            speed = random.uniform(20, 80) * self.grinding_pressure
-                            size = random.uniform(1, 3) * material_to_remove * 2
-                            lifetime = random.uniform(0.3, 1.0)
-                            
-                            # Color based on heat level
-                            if self.heat_level > 0.7:
-                                color = (255, 100, 0)  # Hot orange
-                            elif self.heat_level > 0.3:
-                                color = (200, 200, 100)  # Warm yellow
-                            else:
-                                color = (180, 180, 180)  # Metal gray
-                                
-                            # Add particle [x, y, dx, dy, size, lifetime, color]
-                            self.particles.append([
-                                particle_x, particle_y, 
-                                math.cos(particle_dir) * speed, 
-                                math.sin(particle_dir) * speed,
-                                size, lifetime, color
-                            ])
-            
-            # Update particles
-            for i in range(len(self.particles)):
-                x, y, dx, dy, size, lifetime, color = self.particles[i]
-                # Update position
-                x += dx * dt
-                y += dy * dt
-                # Apply gravity
-                dy += 150 * dt
-                # Reduce lifetime
-                lifetime -= dt
-                # Update particle
-                self.particles[i] = [x, y, dx, dy, size, lifetime, color]
-            
-            if grinding_happened:
-                # Update overall roughness
-                total_imperfection = sum(imp[1] for imp in self.imperfections)
-                self.cylinder_roughness = max(total_imperfection / 400, 0.001)
-                
-                # Increase tool wear based on pressure and material removed
-                self.tool_wear = min(self.tool_wear + (self.grinding_pressure * 0.001) + (material_removed * 0.01), 1.0)
-                
-                # Record last grind time for display effects
-                self.last_grind_time = pygame.time.get_ticks()
-            
-            # Check for victory
-            if self.cylinder_roughness <= TARGET_ROUGHNESS:
-                self.victory = True
-                self.game_over = True
-                self.score = int(1000 * (1 + self.time_left/TIME_LIMIT) * (1 - self.tool_wear/2))
-    
-    def draw_cylinder(self):
-        # Draw base cylinder
-        base_radius = self.cylinder_radius
-        center_x, center_y = self.cylinder_center
-        
-        # Apply wobble effect if grinding is active
-        wobble_offset = 0
-        if self.grinding_active and self.wobble > 0:
-            wobble_offset = math.sin(pygame.time.get_ticks() * 0.01) * self.wobble * 10
-        
-        # Draw the perfect circle target as a faint guide
-        pygame.gfxdraw.aacircle(self.screen, center_x, center_y, self.cylinder_radius, (50, 50, 50))
-            
-        # Draw imperfect cylinder with high detail (smooth curve)
-        points = []
-        angles = []
-        for angle in range(0, 360, 1):
-            angle_rad = math.radians(angle)
-            angles.append(angle_rad)
-            
-            # Calculate radius with imperfections
-            radius = base_radius
-            for imp_angle, imp_magnitude in self.imperfections:
-                angle_diff = min(abs(imp_angle - angle_rad), 2*math.pi - abs(imp_angle - angle_rad))
-                if angle_diff < 0.5:
-                    radius += imp_magnitude * (1 - angle_diff * 2)
-            
-            # Add wobble effect
-            radius += wobble_offset
-            
-            x = center_x + radius * math.cos(angle_rad)
-            y = center_y + radius * math.sin(angle_rad)
-            points.append((int(x), int(y)))
-        
-        # Draw the cylinder with appropriate color/texture
-        if len(points) > 2:
-            # Choose color based on heat level and material
-            if self.heat_level > 0:
-                # Add heat color (blend white -> yellow -> red based on heat level)
-                if self.heat_level < 0.5:
-                    # Blend from white to yellow
-                    r = 255
-                    g = 255
-                    b = int(255 * (1 - self.heat_level * 2))
-                else:
-                    # Blend from yellow to red
-                    r = 255
-                    g = int(255 * (1 - (self.heat_level - 0.5) * 2))
-                    b = 0
-                    
-                heat_color = (r, g, b)
-                pygame.draw.polygon(self.screen, heat_color, points)
-            else:
-                # Draw with metallic style based on roughness
-                if self.cylinder_roughness < TARGET_ROUGHNESS * 1.5:
-                    # Polished look for smooth surface
-                    base_color = (220, 220, 230)
-                    pygame.draw.polygon(self.screen, base_color, points)
-                    
-                    # Add highlight reflection on polished surface
-                    highlight_points = []
-                    for i, (x, y) in enumerate(points):
-                        angle_rad = angles[i]
-                        # Highlight on upper-right quadrant
-                        highlight = 0
-                        if 0 <= angle_rad <= math.pi/2 or 3*math.pi/2 <= angle_rad <= 2*math.pi:
-                            # Calculate highlight intensity
-                            if angle_rad <= math.pi/2:
-                                highlight = 1 - (angle_rad / (math.pi/2))
-                            else:
-                                highlight = (angle_rad - 3*math.pi/2) / (math.pi/2)
-                            
-                            highlight = min(highlight * 50, 30)
-                        
-                        # Apply highlight
-                        if highlight > 0:
-                            h_color = (min(base_color[0] + highlight, 255), 
-                                      min(base_color[1] + highlight, 255), 
-                                      min(base_color[2] + highlight, 255))
-                            pygame.gfxdraw.pixel(self.screen, x, y, h_color)
-                else:
-                    # Rougher look for unfinished surface
-                    roughness_color = (180, 180, 190)
-                    pygame.draw.polygon(self.screen, roughness_color, points)
-                    
-                    # Add visual noise to represent roughness
-                    if self.cylinder_roughness > TARGET_ROUGHNESS * 2:
-                        for i in range(int(self.cylinder_roughness * 200)):
-                            # Pick a random point on the surface
-                            angle_rad = random.uniform(0, 2*math.pi)
-                            radius_var = base_radius + random.uniform(-3, 3)
-                            noise_x = int(center_x + radius_var * math.cos(angle_rad))
-                            noise_y = int(center_y + radius_var * math.sin(angle_rad))
-                            
-                            # Draw a darker pixel to represent surface imperfection
-                            if 0 <= noise_x < WIDTH and 0 <= noise_y < HEIGHT:
-                                pygame.gfxdraw.pixel(self.screen, noise_x, noise_y, (150, 150, 160))
-                
-        # Draw the outline showing imperfections clearly
-        pygame.draw.polygon(self.screen, BLACK, points, 2)
-        
-        # Draw center point
-        pygame.draw.circle(self.screen, RED, self.cylinder_center, 3)
-        
-        # Draw material particles/shavings
-        if hasattr(self, 'particles'):
-            for x, y, _, _, size, lifetime, color in self.particles:
-                if lifetime > 0:
-                    # Fade out as lifetime decreases
-                    alpha = int(min(255, lifetime * 255))
-                    particle_color = (*color, alpha)
-                    
-                    # Draw particle
-                    pygame.gfxdraw.filled_circle(
-                        self.screen, 
-                        int(x), int(y), 
-                        max(1, int(size)), 
-                        particle_color
-                    )
-    
-    def draw_grinding_tool(self):
-        if not self.grinding_active and pygame.time.get_ticks() - self.last_grind_time > 500:
-            return
-            
-        # Calculate grinding tool position
-        angle_rad = math.radians(self.grinding_angle)
-        center_x, center_y = self.cylinder_center
-        tool_distance = self.cylinder_radius + 20
-        
-        tool_x = center_x + tool_distance * math.cos(angle_rad)
-        tool_y = center_y + tool_distance * math.sin(angle_rad)
-        
-        # Draw grinding wheel with appropriate wear
-        wheel_size = 20
-        wheel_width = 12
-        
-        # The angle perpendicular to the grinding angle (facing the cylinder)
-        perpendicular_angle = angle_rad + math.pi
-        
-        # Calculate endpoints of the grinding wheel
-        wheel_end1_x = tool_x + math.cos(perpendicular_angle + math.pi/2) * wheel_size/2
-        wheel_end1_y = tool_y + math.sin(perpendicular_angle + math.pi/2) * wheel_size/2
-        wheel_end2_x = tool_x + math.cos(perpendicular_angle - math.pi/2) * wheel_size/2
-        wheel_end2_y = tool_y + math.sin(perpendicular_angle - math.pi/2) * wheel_size/2
-        
-        # Draw the tool arm
-        arm_length = 40
-        arm_end_x = tool_x + math.cos(perpendicular_angle) * arm_length
-        arm_end_y = tool_y + math.sin(perpendicular_angle) * arm_length
-        pygame.draw.line(self.screen, (100, 100, 100), 
-                        (int(tool_x), int(tool_y)), 
-                        (int(arm_end_x), int(arm_end_y)), 5)
-        
-        # Draw the grinding wheel
-        wheel_color = (0, 180, 255) if not self.grinding_active else (0, 230, 100)
-        
-        # Adjust color based on wear
-        if self.tool_wear > 0.3:
-            # Darken and desaturate as tool wears
-            wear_factor = self.tool_wear - 0.3
-            r, g, b = wheel_color
-            r = int(r + (100 - r) * wear_factor)
-            g = int(g * (1 - wear_factor * 0.7))
-            b = int(b * (1 - wear_factor * 0.7))
-            wheel_color = (r, g, b)
-        
-        # Draw wheel with rounded ends
-        pygame.draw.line(self.screen, wheel_color, 
-                        (int(wheel_end1_x), int(wheel_end1_y)), 
-                        (int(wheel_end2_x), int(wheel_end2_y)), wheel_width)
-        pygame.draw.circle(self.screen, wheel_color, 
-                          (int(wheel_end1_x), int(wheel_end1_y)), wheel_width//2)
-        pygame.draw.circle(self.screen, wheel_color, 
-                          (int(wheel_end2_x), int(wheel_end2_y)), wheel_width//2)
-        
-        # Draw sparks if grinding is active
-        if self.grinding_active:
-            # Calculate contact point with the cylinder
-            contact_x = center_x + self.cylinder_radius * math.cos(angle_rad)
-            contact_y = center_y + self.cylinder_radius * math.sin(angle_rad)
-            
-            # Get imperfections at this angle to make sparks more intense at rough spots
-            roughness_at_angle = 1.0
-            for imp_angle, imp_magnitude in self.imperfections:
-                angle_diff = min(abs(imp_angle - angle_rad), 2*math.pi - abs(imp_angle - angle_rad))
-                if angle_diff < 0.3:
-                    roughness_at_angle += imp_magnitude * 2
-            
-            # Draw more intense sparks at rough spots with more pressure
-            spark_count = int(self.grinding_pressure * 5 * roughness_at_angle)
-            
-            for i in range(spark_count):
-                # Calculate spark direction (away from grinding point)
-                spark_angle = angle_rad + random.uniform(-0.8, 0.8)
-                spark_length = random.uniform(5, 20) * (1 + self.grinding_pressure/3)
-                
-                # Longer sparks for higher pressure or roughness
-                if random.random() < 0.2 * self.grinding_pressure * roughness_at_angle:
-                    spark_length *= 2
-                
-                spark_end_x = contact_x + spark_length * math.cos(spark_angle)
-                spark_end_y = contact_y + spark_length * math.sin(spark_angle)
-                
-                # Color based on heat level and spark size
-                if self.heat_level > 0.7:
-                    spark_color = RED if i % 3 != 0 else (255, 50, 0)
-                elif self.heat_level > 0.3:
-                    spark_color = (255, 165, 0) if i % 3 != 0 else YELLOW  # Orange/yellow mix
-                else:
-                    spark_color = YELLOW if i % 3 != 0 else (255, 220, 130)  # Yellow/white mix
-                
-                # Draw spark line with anti-aliasing for smooth appearance
-                pygame.gfxdraw.line(self.screen, 
-                                  int(contact_x), int(contact_y), 
-                                  int(spark_end_x), int(spark_end_y), 
-                                  spark_color)
-                
-                # For some sparks, add a glow effect
-                if random.random() < 0.3:
-                    mid_x = (contact_x + spark_end_x) / 2
-                    mid_y = (contact_y + spark_end_y) / 2
-                    glow_size = random.uniform(1, 3)
-                    pygame.gfxdraw.filled_circle(self.screen, 
-                                              int(mid_x), int(mid_y), 
-                                              int(glow_size), 
-                                              spark_color)
-    
-    def draw_ui(self):
-        # Draw roughness gauge
-        roughness_text = self.font.render(f"Surface Roughness: {self.cylinder_roughness:.4f}", True, WHITE)
-        self.screen.blit(roughness_text, (20, 20))
-        
-        # Draw target roughness
-        target_text = self.font.render(f"Target: {TARGET_ROUGHNESS:.4f}", True, GREEN)
-        self.screen.blit(target_text, (20, 50))
-        
-        # Draw progress bar
-        progress_width = 200
-        pygame.draw.rect(self.screen, (50, 50, 50), (20, 80, progress_width, 10))
-        
-        # Calculate progress ratio (clamped between 0 and 1)
-        initial_roughness = INITIAL_ROUGHNESS
-        current_progress = max(0, min(1, 1 - (self.cylinder_roughness - TARGET_ROUGHNESS) / (initial_roughness - TARGET_ROUGHNESS)))
-        
-        # Draw progress bar with gradient color from red to green
-        if current_progress > 0:
-            # Calculate color (red -> yellow -> green)
-            if current_progress < 0.5:
-                # Red to yellow
-                r = 255
-                g = int(255 * (current_progress * 2))
-                b = 0
-            else:
-                # Yellow to green
-                r = int(255 * (1 - (current_progress - 0.5) * 2))
-                g = 255
-                b = 0
-                
-            progress_color = (r, g, b)
-            pygame.draw.rect(self.screen, progress_color, (20, 80, int(progress_width * current_progress), 10))
-        
-        # Draw pressure gauge with improved visual design
-        pygame.draw.rect(self.screen, (50, 50, 50), (20, 110, 200, 20))
-        
-        # Choose pressure color based on optimal range
-        if 1.5 <= self.grinding_pressure <= 2.5:
-            pressure_color = (50, 200, 50)  # Green for optimal pressure
-        elif self.grinding_pressure > 3.0:
-            pressure_color = (200, 50, 50)  # Red for excessive pressure
-        else:
-            pressure_color = (50, 120, 200)  # Blue for normal pressure
-            
-        pygame.draw.rect(self.screen, pressure_color, (20, 110, 200 * (self.grinding_pressure / MAX_PRESSURE), 20))
-        
-        # Add markers for optimal pressure range
-        optimal_min = 1.5 / MAX_PRESSURE * 200 + 20
-        optimal_max = 2.5 / MAX_PRESSURE * 200 + 20
-        pygame.draw.line(self.screen, GREEN, (optimal_min, 105), (optimal_min, 135), 2)
-        pygame.draw.line(self.screen, GREEN, (optimal_max, 105), (optimal_max, 135), 2)
-        
-        pressure_text = self.font.render(f"Pressure: {self.grinding_pressure:.1f}", True, WHITE)
-        self.screen.blit(pressure_text, (230, 110))
-        
-        # Draw heat gauge if heating up
-        if self.heat_level > 0:
-            pygame.draw.rect(self.screen, (50, 50, 50), (20, 140, 200, 20))
-            
-            # Gradient color for heat: blue -> yellow -> red
-            if self.heat_level < 0.5:
-                heat_color = (255 * self.heat_level * 2, 255 * self.heat_level * 2, 255 * (1 - self.heat_level * 2))
-            else:
-                heat_color = (255, 255 * (1 - (self.heat_level - 0.5) * 2), 0)
-                
-            pygame.draw.rect(self.screen, heat_color, (20, 140, 200 * self.heat_level, 20))
-            
-            # Warning indicator for dangerous heat levels
-            if self.heat_level > 0.7:
-                warning_text = self.font.render("!", True, RED)
-                self.screen.blit(warning_text, (25 + 200 * self.heat_level, 140))
-                
-            heat_text = self.font.render(f"Heat: {self.heat_level:.2f}", True, WHITE)
-            self.screen.blit(heat_text, (230, 140))
-        
-        # Draw tool wear gauge with realistic representation
-        pygame.draw.rect(self.screen, (50, 50, 50), (20, 170, 200, 20))
-        
-        # Tool wear color: green -> orange -> brown
-        if self.tool_wear < 0.3:
-            # Fresh tool - green to yellow
-            wear_color = (100 + 155 * self.tool_wear / 0.3, 
-                         200 - 50 * self.tool_wear / 0.3, 
-                         100 * (1 - self.tool_wear / 0.3))
-        elif self.tool_wear < 0.7:
-            # Moderate wear - yellow to orange
-            wear_progress = (self.tool_wear - 0.3) / 0.4
-            wear_color = (255, 
-                         150 - 70 * wear_progress, 
-                         0)
-        else:
-            # Heavy wear - orange to brown
-            wear_progress = (self.tool_wear - 0.7) / 0.3
-            wear_color = (150 - 50 * wear_progress,
-                         80 - 40 * wear_progress, 
-                         0)
-                         
-        pygame.draw.rect(self.screen, wear_color, (20, 170, 200 * self.tool_wear, 20))
-        
-        # Add wear level indicator
-        if self.tool_wear > 0.5:
-            replace_text = self.font.render("Replace Soon", True, YELLOW if self.tool_wear < 0.8 else RED)
-            self.screen.blit(replace_text, (230, 170))
-        else:
-            wear_text = self.font.render(f"Tool Wear: {self.tool_wear:.2f}", True, WHITE)
-            self.screen.blit(wear_text, (230, 170))
-            
-        # Draw visual improvement indicator (before vs now)
-        if hasattr(self, 'original_imperfections'):
-            # Calculate original vs current roughness
-            orig_imperfection = sum(imp[1] for imp in self.original_imperfections) / 400
-            current_imperfection = self.cylinder_roughness
-            
-            improvement = (orig_imperfection - current_imperfection) / orig_imperfection * 100
-            improvement_text = self.font.render(f"Improvement: {improvement:.1f}%", True, WHITE)
-            self.screen.blit(improvement_text, (20, 200))
-        
-        # Draw time left
-        minutes = int(self.time_left) // 60
-        seconds = int(self.time_left) % 60
-        time_color = WHITE
-        if self.time_left < 30:
-            time_color = YELLOW
-        if self.time_left < 10:
-            time_color = RED
-            
-        time_text = self.font.render(f"Time: {minutes:02d}:{seconds:02d}", True, time_color)
-        self.screen.blit(time_text, (WIDTH - 150, 20))
-        
-        # Draw angle with visual indicator
-        angle_text = self.font.render(f"Angle: {self.grinding_angle}°", True, WHITE)
-        self.screen.blit(angle_text, (WIDTH - 150, 50))
-        
-        # Draw small angle indicator
-        indicator_radius = 30
-        indicator_x = WIDTH - 100
-        indicator_y = 90
-        
-        # Draw angle indicator circle
-        pygame.draw.circle(self.screen, (50, 50, 50), (indicator_x, indicator_y), indicator_radius)
-        pygame.draw.circle(self.screen, (100, 100, 100), (indicator_x, indicator_y), indicator_radius, 1)
-        
-        # Draw angle indicator line
-        angle_rad = math.radians(self.grinding_angle)
-        line_end_x = indicator_x + indicator_radius * math.cos(angle_rad)
-        line_end_y = indicator_y + indicator_radius * math.sin(angle_rad)
-        pygame.draw.line(self.screen, (0, 200, 255), (indicator_x, indicator_y), (line_end_x, line_end_y), 2)
-        
-        # Draw grinding status
-        status_text = "GRINDING" if self.grinding_active else "Idle"
-        status_color = GREEN if self.grinding_active else GRAY
-        status_text = self.font.render(status_text, True, status_color)
-        self.screen.blit(status_text, (WIDTH - 150, 120))
-        
-        # Draw instructions
-        if not self.game_over:
-            instructions = [
-                "SPACE: Toggle grinding",
-                "UP/DOWN: Adjust pressure",
-                "LEFT/RIGHT: Rotate tool",
-                "R: Reset game"
-            ]
-            
-            for i, instruction in enumerate(instructions):
-                inst_text = self.font.render(instruction, True, GRAY)
-                self.screen.blit(inst_text, (WIDTH - 220, HEIGHT - 120 + i * 30))
-    
-    def draw_game_over(self):
-        if not self.game_over:
-            return
-            
-        # Semi-transparent overlay
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-        self.screen.blit(overlay, (0, 0))
-        
-        # Draw results panel
-        panel_width, panel_height = 500, 350
-        panel_x = (WIDTH - panel_width) // 2
-        panel_y = (HEIGHT - panel_height) // 2
-        
-        # Draw panel background
-        pygame.draw.rect(self.screen, (30, 30, 40), 
-                        (panel_x, panel_y, panel_width, panel_height), 0, 10)
-        pygame.draw.rect(self.screen, (100, 100, 120), 
-                        (panel_x, panel_y, panel_width, panel_height), 2, 10)
-        
-        if self.victory:
-            # Draw victory content
-            # Title
-            victory_text = self.title_font.render("PERFECT FINISH!", True, GREEN)
-            self.screen.blit(victory_text, (WIDTH//2 - victory_text.get_width()//2, panel_y + 30))
-            
-            # Draw certificate-like decoration
-            pygame.draw.line(self.screen, (200, 200, 50), 
-                           (panel_x + 50, panel_y + 70), 
-                           (panel_x + panel_width - 50, panel_y + 70), 2)
-            
-            # Score
-            score_text = self.title_font.render(f"Score: {self.score}", True, WHITE)
-            self.screen.blit(score_text, (WIDTH//2 - score_text.get_width()//2, panel_y + 90))
-            
-            # Results details
-            quality_text = self.font.render(f"Final roughness: {self.cylinder_roughness:.4f}", True, WHITE)
-            self.screen.blit(quality_text, (panel_x + 50, panel_y + 140))
-            
-            if hasattr(self, 'original_imperfections'):
-                # Calculate improvement
-                orig_imperfection = sum(imp[1] for imp in self.original_imperfections) / 400
-                improvement = (orig_imperfection - self.cylinder_roughness) / orig_imperfection * 100
-                
-                improvement_text = self.font.render(f"Surface improvement: {improvement:.1f}%", True, WHITE)
-                self.screen.blit(improvement_text, (panel_x + 50, panel_y + 170))
-            
-            # Time info
-            time_used = TIME_LIMIT - self.time_left
-            minutes = int(time_used) // 60
-            seconds = int(time_used) % 60
-            time_text = self.font.render(f"Time used: {minutes:02d}:{seconds:02d}", True, WHITE)
-            self.screen.blit(time_text, (panel_x + 50, panel_y + 200))
-            
-            # Tool efficiency
-            efficiency_text = self.font.render(f"Tool efficiency: {int(100 * (1 - self.tool_wear/2))}%", True, WHITE)
-            self.screen.blit(efficiency_text, (panel_x + 50, panel_y + 230))
-            
-            # Master craftsmanship rating
-            rating = "Master Craftsman"
-            if self.score < 800:
-                rating = "Journeyman"
-            if self.score < 600:
-                rating = "Apprentice"
-                
-            rating_text = self.font.render(f"Rating: {rating}", True, YELLOW)
-            self.screen.blit(rating_text, (panel_x + 50, panel_y + 260))
-            
-            # Draw medal/trophy icon
-            medal_color = (255, 215, 0)  # Gold
-            pygame.draw.circle(self.screen, medal_color, 
-                             (panel_x + panel_width - 100, panel_y + 180), 40)
-            pygame.draw.circle(self.screen, (0, 0, 0), 
-                             (panel_x + panel_width - 100, panel_y + 180), 40, 2)
-            medal_text = self.title_font.render("✓", True, (0, 0, 0))
-            self.screen.blit(medal_text, (panel_x + panel_width - 115, panel_y + 160))
-        else:
-            # Draw failure content
-            fail_text = self.title_font.render("TIME'S UP!", True, RED)
-            self.screen.blit(fail_text, (WIDTH//2 - fail_text.get_width()//2, panel_y + 30))
-            
-            # Details
-            roughness_text = self.font.render(f"Final roughness: {self.cylinder_roughness:.4f}", True, WHITE)
-            self.screen.blit(roughness_text, (panel_x + 50, panel_y + 90))
-            
-            target_text = self.font.render(f"Target was: {TARGET_ROUGHNESS:.4f}", True, GREEN)
-            self.screen.blit(target_text, (panel_x + 50, panel_y + 120))
-            
-            # Progress percentage
-            if hasattr(self, 'original_imperfections'):
-                orig_imperfection = sum(imp[1] for imp in self.original_imperfections) / 400
-                progress = ((orig_imperfection - self.cylinder_roughness) / 
-                          (orig_imperfection - TARGET_ROUGHNESS)) * 100
-                progress = max(0, min(100, progress))
-                
-                progress_text = self.font.render(f"Progress: {progress:.1f}%", True, WHITE)
-                self.screen.blit(progress_text, (panel_x + 50, panel_y + 150))
-                
-                # Draw progress bar
-                progress_bar_width = 400
-                pygame.draw.rect(self.screen, (50, 50, 50), 
-                                (panel_x + 50, panel_y + 180, progress_bar_width, 20))
-                pygame.draw.rect(self.screen, (100, 150, 200), 
-                                (panel_x + 50, panel_y + 180, int(progress_bar_width * progress/100), 20))
-                
-                # Marker for target
-                pygame.draw.line(self.screen, GREEN, 
-                               (panel_x + 50 + progress_bar_width, panel_y + 170),
-                               (panel_x + 50 + progress_bar_width, panel_y + 210), 2)
-            
-            # Feedback based on progress
-            feedback = "Keep practicing! Try adjusting pressure more carefully."
-            if progress > 80:
-                feedback = "So close! A bit more precision would have done it."
-            elif progress < 30:
-                feedback = "Focus on maintaining optimal pressure and angle positioning."
-                
-            feedback_text = self.font.render(feedback, True, YELLOW)
-            self.screen.blit(feedback_text, (panel_x + 50, panel_y + 220))
-            
-            # Tool wear info
-            tool_text = self.font.render(f"Tool wear: {self.tool_wear:.2f}", True, WHITE)
-            self.screen.blit(tool_text, (panel_x + 50, panel_y + 250))
-        
-        # Restart instruction
-        restart_text = self.font.render("Press R to restart", True, WHITE)
-        self.screen.blit(restart_text, (WIDTH//2 - restart_text.get_width()//2, panel_y + panel_height - 40))
-    
-    def run(self):
-        running = True
-        last_time = pygame.time.get_ticks()
-        
-        while running:
-            current_time = pygame.time.get_ticks()
-            dt = (current_time - last_time) / 1000.0  # Delta time in seconds
-            last_time = current_time
-            
-            # Handle events
-            running = self.handle_events()
-            
-            # Update game state
-            self.update(dt)
-            
-            # Draw everything
-            self.screen.fill(BLACK)
-            self.draw_cylinder()
-            self.draw_grinding_tool()
-            self.draw_ui()
-            self.draw_game_over()
-            
-            pygame.display.flip()
-            self.clock.tick(60)
+        function preload() { }
 
-if __name__ == "__main__":
-    game = GrindingGame()
-    game.run()
-    pygame.quit()
-    sys.exit()
-                
-                `;
-                try {
-                    let output = await pyodide.runPythonAsync(code);
-                    document.getElementById("output").textContent = output || "(Code ran successfully)";
-                } catch (err) {
-                    document.getElementById("output").textContent = err;
-                }
+        function create() {
+            graphics = this.add.graphics();
+
+            // Status Box
+            statusBox = this.add.text(20, 20, '', {
+                color: '#ffffff',
+                fontSize: '18px',
+                backgroundColor: '#444',
+                padding: { x: 10, y: 10 },
+                fixedWidth: 250
+            });
+
+            // Imperfections init
+            for (let angle = 0; angle < 360; angle += 5) {
+                let magnitude = Phaser.Math.Between(8, 20);
+                imperfections.push({ angle: angle, magnitude: magnitude });
+            }
+
+            // Controls
+            this.input.keyboard.on('keydown-LEFT', () => {
+                grindingAngle = (grindingAngle - 5 + 360) % 360;
+            });
+            this.input.keyboard.on('keydown-RIGHT', () => {
+                grindingAngle = (grindingAngle + 5) % 360;
+            });
+            this.input.keyboard.on('keydown-UP', () => {
+                grindingPressure = Math.min(grindingPressure + 0.1, 5.0);
+            });
+            this.input.keyboard.on('keydown-DOWN', () => {
+                grindingPressure = Math.max(grindingPressure - 0.1, 0.1);
+            });
+            this.input.keyboard.on('keydown-SPACE', () => {
+                grinding = !grinding;
             });
         }
-        main();
+
+        function update() {
+            graphics.clear();
+
+            const centerX = 450;
+            const centerY = 325;
+            const radius = 120;
+
+            // Draw CNC Base Plate
+            graphics.fillStyle(0x333333, 1);
+            graphics.fillRect(centerX - 200, centerY + 150, 400, 20);
+
+            // Draw Cylinder (metal)
+            graphics.lineStyle(8, 0x888888);
+            graphics.strokeCircle(centerX, centerY, radius);
+
+            // Draw imperfections (bumps)
+            imperfections.forEach(imp => {
+                let angleRad = Phaser.Math.DegToRad(imp.angle);
+                let impRadius = radius + imp.magnitude;
+                let x = centerX + impRadius * Math.cos(angleRad);
+                let y = centerY + impRadius * Math.sin(angleRad);
+                graphics.fillStyle(0xbbbbbb, 1);
+                graphics.fillCircle(x, y, 3);
+            });
+
+            // Grinding tool
+            let toolRad = Phaser.Math.DegToRad(grindingAngle);
+            let toolX = centerX + (radius + 60) * Math.cos(toolRad);
+            let toolY = centerY + (radius + 60) * Math.sin(toolRad);
+
+            // Tool arm
+            graphics.lineStyle(4, 0xaaaaaa);
+            graphics.beginPath();
+            graphics.moveTo(toolX, toolY);
+            graphics.lineTo(toolX + 60 * Math.cos(toolRad), toolY + 60 * Math.sin(toolRad));
+            graphics.strokePath();
+
+            // Grinding head
+            graphics.fillStyle(grinding ? 0xff3333 : 0x00ccff, 1);
+            graphics.fillCircle(toolX, toolY, 12);
+
+            // Sparks (if grinding)
+            if (grinding) {
+                imperfections.forEach(imp => {
+                    let diff = Math.abs(Phaser.Math.Angle.WrapDegrees(imp.angle - grindingAngle));
+                    if (diff < 15) {
+                        imp.magnitude = Math.max(imp.magnitude - 0.15 * grindingPressure, 0);
+
+                        // Add sparks
+                        for (let i = 0; i < 2; i++) {
+                            sparks.push({
+                                x: centerX + (radius + imp.magnitude) * Math.cos(Phaser.Math.DegToRad(imp.angle)),
+                                y: centerY + (radius + imp.magnitude) * Math.sin(Phaser.Math.DegToRad(imp.angle)),
+                                dx: Phaser.Math.Between(-3, 3),
+                                dy: Phaser.Math.Between(-3, 3),
+                                life: Phaser.Math.Between(10, 30)
+                            });
+                        }
+                    }
+                });
+                // Update roughness
+                let total = imperfections.reduce((sum, imp) => sum + imp.magnitude, 0);
+                roughness = total / imperfections.length / 100;
+            }
+
+            // Draw sparks
+            sparks.forEach(spark => {
+                graphics.fillStyle(0xffcc00, 1);
+                graphics.fillCircle(spark.x, spark.y, 2);
+                spark.x += spark.dx;
+                spark.y += spark.dy;
+                spark.life--;
+            });
+            sparks = sparks.filter(s => s.life > 0);
+
+            // Update status box
+            statusBox.setText(
+                `Grinding: ${grinding ? 'ON' : 'OFF'}\n` +
+                `Angle: ${grindingAngle}°\n` +
+                `Pressure: ${grindingPressure.toFixed(1)}\n` +
+                `Roughness: ${roughness.toFixed(4)}\n\n` +
+                `Controls:\n← → Rotate\n↑ ↓ Pressure\nSPACE Start/Stop`
+            );
+        }
     </script>
 </body>
 </html>
