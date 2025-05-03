@@ -2,77 +2,169 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Grinding Game (p5.js)</title>
-    <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+    <title>Grinding Game (Browser Version)</title>
+    <style>
+        body {
+            margin: 0;
+            background: black;
+        }
+        #status {
+            color: white;
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        canvas {
+            display: block;
+            margin: auto;
+        }
+    </style>
 </head>
 <body>
-<script>
-let roughness = 0.15;
-let angle = 0;
-let pressure = 1.0;
-let radius = 100;
+<div id="status">Loading game, please wait...</div>
+<canvas id="canvas" width="800" height="600"></canvas>
 
-function setup() {
-  createCanvas(800, 600);
-  angleMode(DEGREES);
-}
+<script type="module">
+    import { main } from "https://pygame-web.github.io/pygame-wasm/pygame/pygame.js";
+    main({
+        canvas: document.getElementById("canvas"),
+        onRuntimeInitialized: () => {
+            document.getElementById("status").remove();
+        }
+    });
+</script>
 
-function draw() {
-  background(0);
-  
-  // Draw the base cylinder
-  push();
-  translate(width/2, height/2);
-  stroke(255);
-  noFill();
-  ellipse(0, 0, radius * 2, radius * 2);
-  
-  // Draw imperfections as roughness effect
-  stroke(255, 0, 0);
-  beginShape();
-  for (let a = 0; a < 360; a += 5) {
-    let imperfection = roughness * 20 * noise(a * 0.1, frameCount * 0.01);
-    let r = radius + imperfection;
-    let x = r * cos(a);
-    let y = r * sin(a);
-    vertex(x, y);
-  }
-  endShape(CLOSE);
-  
-  // Draw grinding tool
-  let toolX = (radius + 30) * cos(angle);
-  let toolY = (radius + 30) * sin(angle);
-  fill(0, 200, 255);
-  noStroke();
-  ellipse(toolX, toolY, 20, 20);
-  pop();
-  
-  // UI
-  fill(255);
-  textSize(16);
-  text(`Roughness: ${roughness.toFixed(3)}`, 20, 30);
-  text(`Pressure: ${pressure.toFixed(1)}`, 20, 50);
-  text(`Angle: ${angle}°`, 20, 70);
-}
+<!-- Dein gesamter Python-Code eingebettet -->
+<script type="text/python">
+import pygame
+import sys
+import math
+import random
 
-function keyPressed() {
-  if (keyCode === LEFT_ARROW) {
-    angle = (angle - 5) % 360;
-  } else if (keyCode === RIGHT_ARROW) {
-    angle = (angle + 5) % 360;
-  } else if (keyCode === UP_ARROW) {
-    pressure = min(pressure + 0.1, 5.0);
-  } else if (keyCode === DOWN_ARROW) {
-    pressure = max(pressure - 0.1, 0);
-  } else if (key === ' ') {
-    grind();
-  }
-}
+# Initialize pygame
+pygame.init()
 
-function grind() {
-  // Simulate grinding effect
-  roughness = max(roughness - 0.005 * pressure, 0.01);
-}
+# Constants
+WIDTH, HEIGHT = 800, 600
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+YELLOW = (255, 255, 0)
+
+# Game parameters
+INITIAL_ROUGHNESS = 0.15
+TARGET_ROUGHNESS = 0.01
+GRINDING_PRECISION = 0.005
+MAX_PRESSURE = 5.0
+PRESSURE_STEP = 0.1
+
+class GrindingGame:
+    def __init__(self):
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        pygame.display.set_caption("Precision Grinding Simulator")
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont(None, 28)
+
+        self.reset_game()
+
+    def reset_game(self):
+        self.cylinder_roughness = INITIAL_ROUGHNESS
+        self.grinding_pressure = 1.0
+        self.grinding_angle = 0
+        self.grinding_active = False
+        self.cylinder_radius = 100
+        self.cylinder_center = (WIDTH // 2, HEIGHT // 2)
+        self.imperfections = []
+        offset_angle = random.uniform(0, 2*math.pi)
+        offset_magnitude = random.uniform(5, 15)
+        for angle in range(0, 360, 5):
+            angle_rad = math.radians(angle)
+            magnitude = math.cos(angle_rad - offset_angle) * offset_magnitude
+            self.imperfections.append((angle_rad, abs(magnitude)))
+
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return False
+                elif event.key == pygame.K_SPACE:
+                    self.grinding_active = not self.grinding_active
+                elif event.key == pygame.K_r:
+                    self.reset_game()
+
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT]:
+            self.grinding_angle = (self.grinding_angle - 2) % 360
+        if keys[pygame.K_RIGHT]:
+            self.grinding_angle = (self.grinding_angle + 2) % 360
+        if keys[pygame.K_UP]:
+            self.grinding_pressure = min(self.grinding_pressure + PRESSURE_STEP, MAX_PRESSURE)
+        if keys[pygame.K_DOWN]:
+            self.grinding_pressure = max(self.grinding_pressure - PRESSURE_STEP, 0)
+        return True
+
+    def update(self):
+        if self.grinding_active:
+            # Basic grinding effect: reduce roughness
+            self.cylinder_roughness = max(
+                self.cylinder_roughness - GRINDING_PRECISION * self.grinding_pressure, TARGET_ROUGHNESS
+            )
+
+    def draw_cylinder(self):
+        base_radius = self.cylinder_radius
+        center_x, center_y = self.cylinder_center
+        # Draw the perfect circle as background
+        pygame.draw.circle(self.screen, (50, 50, 50), (center_x, center_y), base_radius, 1)
+
+        # Draw imperfections (approximation)
+        points = []
+        for angle in range(0, 360, 5):
+            angle_rad = math.radians(angle)
+            radius = base_radius
+            for imp_angle, imp_magnitude in self.imperfections:
+                angle_diff = min(abs(imp_angle - angle_rad), 2*math.pi - abs(imp_angle - angle_rad))
+                if angle_diff < 0.3:
+                    radius += imp_magnitude * (1 - angle_diff * 3)
+            x = center_x + radius * math.cos(angle_rad)
+            y = center_y + radius * math.sin(angle_rad)
+            points.append((x, y))
+        if len(points) > 2:
+            pygame.draw.polygon(self.screen, (180, 180, 200), points, 0)
+            pygame.draw.polygon(self.screen, BLACK, points, 2)
+
+    def draw_grinding_tool(self):
+        angle_rad = math.radians(self.grinding_angle)
+        center_x, center_y = self.cylinder_center
+        tool_distance = self.cylinder_radius + 30
+        tool_x = center_x + tool_distance * math.cos(angle_rad)
+        tool_y = center_y + tool_distance * math.sin(angle_rad)
+        pygame.draw.circle(self.screen, (0, 200, 255), (int(tool_x), int(tool_y)), 10)
+
+    def draw_ui(self):
+        roughness_text = self.font.render(f"Surface Roughness: {self.cylinder_roughness:.4f}", True, WHITE)
+        self.screen.blit(roughness_text, (20, 20))
+        pressure_text = self.font.render(f"Pressure: {self.grinding_pressure:.1f}", True, WHITE)
+        self.screen.blit(pressure_text, (20, 50))
+        angle_text = self.font.render(f"Angle: {self.grinding_angle}°", True, WHITE)
+        self.screen.blit(angle_text, (20, 80))
+
+    def run(self):
+        running = True
+        while running:
+            running = self.handle_events()
+            self.update()
+            self.screen.fill(BLACK)
+            self.draw_cylinder()
+            self.draw_grinding_tool()
+            self.draw_ui()
+            pygame.display.flip()
+            self.clock.tick(60)
+
+if __name__ == "__main__":
+    GrindingGame().run()
 </script>
 </body>
 </html>
