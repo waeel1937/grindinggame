@@ -10,3 +10,5 @@ Dies ist die Web-Version des Grinding Games, umgesetzt mit Pyodide + pygame-wasm
 2️⃣ Gehe zu den **Repository Settings > Pages** und aktiviere GitHub Pages für den `main`-Branch.  
 3️⃣ Nach ca. 1-2 Minuten ist dein Spiel erreichbar unter:
 
+https://waeel1937.github.io/grindinggame/
+
