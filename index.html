@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>CNC Grinding Simulator</title>
+    <title>CNC Grinding Simulator - Advanced Editable Shape</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
     <style>
         body {
@@ -19,35 +19,35 @@
     </style>
 </head>
 <body>
-    <h1>CNC Grinding Simulator</h1>
+    <h1>CNC Grinding Simulator (Rotating + Editable Shape)</h1>
     <div id="game"></div>
 
     <script>
         const config = {
             type: Phaser.AUTO,
-            width: 900,
-            height: 650,
+            width: 1000,
+            height: 600,
             backgroundColor: '#2e2e2e',
             parent: 'game',
-            scene: {
-                preload: preload,
-                create: create,
-                update: update
-            }
+            scene: { preload, create, update }
         };
 
         let graphics;
         let statusBox;
         let sparks = [];
 
-        const INITIAL_ROUGHNESS = 0.15;
-        const TARGET_ROUGHNESS = 0.01;
+        const roller = {
+            x: 500,
+            y: 350,
+            radius: 100,
+            imperfections: [],
+            rotationSpeed: 1
+        };
+
         let grinding = false;
         let grindingAngle = 0;
         let grindingPressure = 1.0;
-        let roughness = INITIAL_ROUGHNESS;
-
-        const imperfections = [];
+        let roughness = 0.15;
 
         const game = new Phaser.Game(config);
 
@@ -56,22 +56,21 @@
         function create() {
             graphics = this.add.graphics();
 
-            // Status Box
             statusBox = this.add.text(20, 20, '', {
                 color: '#ffffff',
                 fontSize: '18px',
                 backgroundColor: '#444',
                 padding: { x: 10, y: 10 },
-                fixedWidth: 250
+                fixedWidth: 350
             });
 
-            // Imperfections init
-            for (let angle = 0; angle < 360; angle += 5) {
-                let magnitude = Phaser.Math.Between(8, 20);
-                imperfections.push({ angle: angle, magnitude: magnitude });
+            for (let angle = 0; angle < 360; angle += 8) {
+                roller.imperfections.push({
+                    angle: angle,
+                    magnitude: Phaser.Math.Between(5, 15)
+                });
             }
 
-            // Controls
             this.input.keyboard.on('keydown-LEFT', () => {
                 grindingAngle = (grindingAngle - 5 + 360) % 360;
             });
@@ -87,74 +86,86 @@
             this.input.keyboard.on('keydown-SPACE', () => {
                 grinding = !grinding;
             });
+            this.input.keyboard.on('keydown-A', () => {
+                // Add new imperfection manually
+                roller.imperfections.push({
+                    angle: Phaser.Math.Between(0, 359),
+                    magnitude: Phaser.Math.Between(10, 20)
+                });
+            });
+            this.input.keyboard.on('keydown-D', () => {
+                // Delete last imperfection
+                if (roller.imperfections.length > 0) {
+                    roller.imperfections.pop();
+                }
+            });
         }
 
         function update() {
             graphics.clear();
 
-            const centerX = 450;
-            const centerY = 325;
-            const radius = 120;
+            const centerX = roller.x;
+            const centerY = roller.y;
+            const radius = roller.radius;
 
-            // Draw CNC Base Plate
-            graphics.fillStyle(0x333333, 1);
-            graphics.fillRect(centerX - 200, centerY + 150, 400, 20);
+            // Rotate imperfections
+            roller.imperfections.forEach(imp => {
+                imp.angle = (imp.angle + roller.rotationSpeed) % 360;
+            });
 
-            // Draw Cylinder (metal)
-            graphics.lineStyle(8, 0x888888);
-            graphics.strokeCircle(centerX, centerY, radius);
+            // Machine base
+            graphics.fillStyle(0x444444, 1);
+            graphics.fillRect(centerX - 250, centerY + radius + 50, 500, 20);
 
-            // Draw imperfections (bumps)
-            imperfections.forEach(imp => {
+            // Cylinder body (simulate rotation with shading)
+            graphics.fillStyle(0x999999, 1);
+            graphics.fillCircle(centerX, centerY, radius);
+            graphics.fillStyle(0x777777, 1);
+            graphics.fillCircle(centerX, centerY, radius * 0.9);
+
+            // Imperfections drawn
+            roller.imperfections.forEach(imp => {
                 let angleRad = Phaser.Math.DegToRad(imp.angle);
                 let impRadius = radius + imp.magnitude;
                 let x = centerX + impRadius * Math.cos(angleRad);
                 let y = centerY + impRadius * Math.sin(angleRad);
-                graphics.fillStyle(0xbbbbbb, 1);
-                graphics.fillCircle(x, y, 3);
+                graphics.fillStyle(0xdddddd, 1);
+                graphics.fillCircle(x, y, 4);
             });
 
-            // Grinding tool
+            // Grinding Tool
             let toolRad = Phaser.Math.DegToRad(grindingAngle);
             let toolX = centerX + (radius + 60) * Math.cos(toolRad);
             let toolY = centerY + (radius + 60) * Math.sin(toolRad);
 
-            // Tool arm
+            graphics.fillStyle(grinding ? 0xff3333 : 0x00ccff, 1);
+            graphics.fillCircle(toolX, toolY, 20);
+
             graphics.lineStyle(4, 0xaaaaaa);
             graphics.beginPath();
             graphics.moveTo(toolX, toolY);
-            graphics.lineTo(toolX + 60 * Math.cos(toolRad), toolY + 60 * Math.sin(toolRad));
+            graphics.lineTo(toolX + 50 * Math.cos(toolRad), toolY + 50 * Math.sin(toolRad));
             graphics.strokePath();
 
-            // Grinding head
-            graphics.fillStyle(grinding ? 0xff3333 : 0x00ccff, 1);
-            graphics.fillCircle(toolX, toolY, 12);
-
-            // Sparks (if grinding)
+            // Sparks effect
             if (grinding) {
-                imperfections.forEach(imp => {
+                roller.imperfections.forEach(imp => {
                     let diff = Math.abs(Phaser.Math.Angle.WrapDegrees(imp.angle - grindingAngle));
-                    if (diff < 15) {
-                        imp.magnitude = Math.max(imp.magnitude - 0.15 * grindingPressure, 0);
-
-                        // Add sparks
+                    if (diff < 10) {
+                        imp.magnitude = Math.max(imp.magnitude - 0.1 * grindingPressure, 0);
                         for (let i = 0; i < 2; i++) {
                             sparks.push({
                                 x: centerX + (radius + imp.magnitude) * Math.cos(Phaser.Math.DegToRad(imp.angle)),
                                 y: centerY + (radius + imp.magnitude) * Math.sin(Phaser.Math.DegToRad(imp.angle)),
                                 dx: Phaser.Math.Between(-3, 3),
                                 dy: Phaser.Math.Between(-3, 3),
-                                life: Phaser.Math.Between(10, 30)
+                                life: Phaser.Math.Between(10, 25)
                             });
                         }
                     }
                 });
-                // Update roughness
-                let total = imperfections.reduce((sum, imp) => sum + imp.magnitude, 0);
-                roughness = total / imperfections.length / 100;
             }
 
-            // Draw sparks
             sparks.forEach(spark => {
                 graphics.fillStyle(0xffcc00, 1);
                 graphics.fillCircle(spark.x, spark.y, 2);
@@ -164,13 +175,16 @@
             });
             sparks = sparks.filter(s => s.life > 0);
 
-            // Update status box
+            // Update roughness
+            const total = roller.imperfections.reduce((sum, imp) => sum + imp.magnitude, 0);
+            roughness = total / roller.imperfections.length / 10;
+
             statusBox.setText(
                 `Grinding: ${grinding ? 'ON' : 'OFF'}\n` +
-                `Angle: ${grindingAngle}°\n` +
+                `Angle: ${grindingAngle}\n` +
                 `Pressure: ${grindingPressure.toFixed(1)}\n` +
                 `Roughness: ${roughness.toFixed(4)}\n\n` +
-                `Controls:\n← → Rotate\n↑ ↓ Pressure\nSPACE Start/Stop`
+                `Controls:\n← → Rotate tool\n↑ ↓ Pressure\nSPACE Start/Stop\nA: Add imperfection\nD: Delete imperfection`
             );
         }
     </script>
