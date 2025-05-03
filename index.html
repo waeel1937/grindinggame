@@ -6,7 +6,7 @@
     <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
 </head>
 <body>
-    <h1>Python Game</h1>
+    <h1>Python Game (Text-Based)</h1>
     <button id="run">Run Game</button>
     <pre id="output"></pre>
 
@@ -15,7 +15,8 @@
             const pyodide = await loadPyodide();
             document.getElementById("run").addEventListener("click", async () => {
                 let code = `
-import pygame
+
+                import pygame
 import sys
 import math
 import random
@@ -848,8 +849,7 @@ if __name__ == "__main__":
     game.run()
     pygame.quit()
     sys.exit()
-
-# =======================================
+                
                 `;
                 try {
                     let output = await pyodide.runPythonAsync(code);
