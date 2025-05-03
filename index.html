@@ -1,170 +1,227 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Grinding Game (Browser Version)</title>
+    <meta charset="utf-8">
+    <title>Python in HTML mit Brython</title>
+    <!-- Brython-Bibliotheken laden -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/brython/3.11.0/brython.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/brython/3.11.0/brython_stdlib.min.js"></script>
     <style>
         body {
-            margin: 0;
-            background: black;
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
         }
-        #status {
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .editor {
+            width: 100%;
+            height: 200px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+        .output {
+            width: 100%;
+            min-height: 150px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #f5f5f5;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        button {
+            background-color: #4CAF50;
             color: white;
-            font-family: sans-serif;
-            text-align: center;
-            padding: 20px;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 10px;
         }
-        canvas {
-            display: block;
-            margin: auto;
+        button:hover {
+            background-color: #45a049;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .examples {
+            margin-top: 30px;
+        }
+        .example-btn {
+            background-color: #2196F3;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .example-btn:hover {
+            background-color: #0b7dda;
         }
     </style>
 </head>
-<body>
-<div id="status">Loading game, please wait...</div>
-<canvas id="canvas" width="800" height="600"></canvas>
+<body onload="brython()">
+    <div class="container">
+        <h1>Python im Browser mit Brython</h1>
+        <p>Diese Seite ermöglicht es Ihnen, Python-Code direkt im Browser auszuführen.</p>
+        
+        <h2>Python-Code-Editor:</h2>
+        <textarea id="code" class="editor">
+# Hier können Sie Ihren Python-Code eingeben
+# Beispiel: Einfache Berechnung
+summe = 0
+for i in range(1, 11):
+    summe += i
+    
+print(f"Die Summe der Zahlen von 1 bis 10 ist: {summe}")
 
-<script type="module">
-    import { main } from "https://pygame-web.github.io/pygame-wasm/pygame/pygame.js";
-    main({
-        canvas: document.getElementById("canvas"),
-        onRuntimeInitialized: () => {
-            document.getElementById("status").remove();
+# Eine einfache Funktion definieren
+def grüße(name):
+    return f"Hallo {name}! Willkommen zur Python-Programmierung im Browser."
+
+# Funktion aufrufen
+ergebnis = grüße("Benutzer")
+print(ergebnis)</textarea>
+        
+        <button id="run-btn" onclick="runPython()">Code ausführen</button>
+        
+        <h2>Ausgabe:</h2>
+        <div id="output" class="output"></div>
+        
+        <div class="examples">
+            <h2>Beispiele:</h2>
+            <button class="example-btn" onclick="loadExample('basic')">Grundlagen</button>
+            <button class="example-btn" onclick="loadExample('list')">Listen-Manipulation</button>
+            <button class="example-btn" onclick="loadExample('math')">Mathematische Berechnungen</button>
+            <button class="example-btn" onclick="loadExample('dom')">DOM-Manipulation</button>
+        </div>
+    </div>
+
+    <script type="text/python" id="python-script">
+from browser import document, html
+
+def print_output(*args, **kwargs):
+    # Umleitung der Python-Ausgabe zum HTML-Ausgabebereich
+    output = document["output"]
+    end = kwargs.get("end", "\\n")
+    output.text += " ".join(str(arg) for arg in args) + end
+
+# Überschreiben der print-Funktion
+import builtins
+original_print = builtins.print
+builtins.print = print_output
+    </script>
+
+    <script>
+        function runPython() {
+            // Löschen der vorherigen Ausgabe
+            document.getElementById("output").textContent = "";
+            
+            // Python-Code ausführen
+            try {
+                const pythonCode = document.getElementById("code").value;
+                __BRYTHON__.run_py(pythonCode);
+            } catch (error) {
+                document.getElementById("output").textContent = "Fehler: " + error;
+            }
         }
-    });
-</script>
+        
+        function loadExample(example) {
+            let code = "";
+            
+            switch(example) {
+                case 'basic':
+                    code = `# Grundlegende Python-Syntax
+name = "Python-Enthusiast"
+alter = 25
 
-<!-- Dein gesamter Python-Code eingebettet -->
-<script type="text/python">
-import pygame
-import sys
+# String-Formatierung
+print(f"Hallo, ich bin ein {name} und bin {alter} Jahre alt.")
+
+# Bedingungen
+if alter >= 18:
+    print("Ich bin volljährig.")
+else:
+    print("Ich bin minderjährig.")
+
+# Schleifen
+print("\\nZählen von 1 bis 5:")
+for i in range(1, 6):
+    print(i)`;
+                    break;
+                    
+                case 'list':
+                    code = `# Listen-Manipulation in Python
+zahlen = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+# Liste mit Listenverständnis filtern
+gerade_zahlen = [x for x in zahlen if x % 2 == 0]
+print(f"Gerade Zahlen: {gerade_zahlen}")
+
+# Liste mit map und lambda transformieren
+quadratzahlen = list(map(lambda x: x**2, zahlen))
+print(f"Quadratzahlen: {quadratzahlen}")
+
+# Listen sortieren
+namen = ["Max", "Anna", "Sophie", "Tim", "Lena"]
+print(f"Sortierte Namen: {sorted(namen)}")
+print(f"Umgekehrt sortierte Namen: {sorted(namen, reverse=True)}")`;
+                    break;
+                    
+                case 'math':
+                    code = `# Mathematische Berechnungen
 import math
+
+# Grundlegende Operationen
+a, b = 10, 3
+print(f"{a} + {b} = {a + b}")
+print(f"{a} - {b} = {a - b}")
+print(f"{a} * {b} = {a * b}")
+print(f"{a} / {b} = {a / b}")
+print(f"{a} % {b} = {a % b}")  # Modulo
+print(f"{a} ** {b} = {a ** b}")  # Potenz
+
+# Mathematische Funktionen
+print(f"Wurzel von {a}: {math.sqrt(a)}")
+print(f"Sinus von 90°: {math.sin(math.radians(90))}")
+print(f"Pi: {math.pi}")
+
+# Zufallszahlen
 import random
+print(f"Zufallszahl (1-100): {random.randint(1, 100)}")`;
+                    break;
+                    
+                case 'dom':
+                    code = `# DOM-Manipulation mit Python/Brython
+from browser import document, html
 
-# Initialize pygame
-pygame.init()
+# Text direkt in die Ausgabe einfügen
+print("DOM-Manipulation startet...")
 
-# Constants
-WIDTH, HEIGHT = 800, 600
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-YELLOW = (255, 255, 0)
+# Ein neues Element erstellen und anhängen
+new_div = html.DIV("Dieser Inhalt wurde dynamisch mit Python hinzugefügt!")
+new_div.style = {"color": "red", "font-weight": "bold", "margin": "10px 0"}
+document["output"] <= new_div
 
-# Game parameters
-INITIAL_ROUGHNESS = 0.15
-TARGET_ROUGHNESS = 0.01
-GRINDING_PRECISION = 0.005
-MAX_PRESSURE = 5.0
-PRESSURE_STEP = 0.1
+# Einen Button erstellen
+def button_click(event):
+    alert_div = html.DIV("Du hast den Python-generierten Button geklickt!")
+    alert_div.style = {"color": "blue", "font-style": "italic"}
+    document["output"] <= alert_div
 
-class GrindingGame:
-    def __init__(self):
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Precision Grinding Simulator")
-        self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont(None, 28)
-
-        self.reset_game()
-
-    def reset_game(self):
-        self.cylinder_roughness = INITIAL_ROUGHNESS
-        self.grinding_pressure = 1.0
-        self.grinding_angle = 0
-        self.grinding_active = False
-        self.cylinder_radius = 100
-        self.cylinder_center = (WIDTH // 2, HEIGHT // 2)
-        self.imperfections = []
-        offset_angle = random.uniform(0, 2*math.pi)
-        offset_magnitude = random.uniform(5, 15)
-        for angle in range(0, 360, 5):
-            angle_rad = math.radians(angle)
-            magnitude = math.cos(angle_rad - offset_angle) * offset_magnitude
-            self.imperfections.append((angle_rad, abs(magnitude)))
-
-    def handle_events(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    return False
-                elif event.key == pygame.K_SPACE:
-                    self.grinding_active = not self.grinding_active
-                elif event.key == pygame.K_r:
-                    self.reset_game()
-
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            self.grinding_angle = (self.grinding_angle - 2) % 360
-        if keys[pygame.K_RIGHT]:
-            self.grinding_angle = (self.grinding_angle + 2) % 360
-        if keys[pygame.K_UP]:
-            self.grinding_pressure = min(self.grinding_pressure + PRESSURE_STEP, MAX_PRESSURE)
-        if keys[pygame.K_DOWN]:
-            self.grinding_pressure = max(self.grinding_pressure - PRESSURE_STEP, 0)
-        return True
-
-    def update(self):
-        if self.grinding_active:
-            # Basic grinding effect: reduce roughness
-            self.cylinder_roughness = max(
-                self.cylinder_roughness - GRINDING_PRECISION * self.grinding_pressure, TARGET_ROUGHNESS
-            )
-
-    def draw_cylinder(self):
-        base_radius = self.cylinder_radius
-        center_x, center_y = self.cylinder_center
-        # Draw the perfect circle as background
-        pygame.draw.circle(self.screen, (50, 50, 50), (center_x, center_y), base_radius, 1)
-
-        # Draw imperfections (approximation)
-        points = []
-        for angle in range(0, 360, 5):
-            angle_rad = math.radians(angle)
-            radius = base_radius
-            for imp_angle, imp_magnitude in self.imperfections:
-                angle_diff = min(abs(imp_angle - angle_rad), 2*math.pi - abs(imp_angle - angle_rad))
-                if angle_diff < 0.3:
-                    radius += imp_magnitude * (1 - angle_diff * 3)
-            x = center_x + radius * math.cos(angle_rad)
-            y = center_y + radius * math.sin(angle_rad)
-            points.append((x, y))
-        if len(points) > 2:
-            pygame.draw.polygon(self.screen, (180, 180, 200), points, 0)
-            pygame.draw.polygon(self.screen, BLACK, points, 2)
-
-    def draw_grinding_tool(self):
-        angle_rad = math.radians(self.grinding_angle)
-        center_x, center_y = self.cylinder_center
-        tool_distance = self.cylinder_radius + 30
-        tool_x = center_x + tool_distance * math.cos(angle_rad)
-        tool_y = center_y + tool_distance * math.sin(angle_rad)
-        pygame.draw.circle(self.screen, (0, 200, 255), (int(tool_x), int(tool_y)), 10)
-
-    def draw_ui(self):
-        roughness_text = self.font.render(f"Surface Roughness: {self.cylinder_roughness:.4f}", True, WHITE)
-        self.screen.blit(roughness_text, (20, 20))
-        pressure_text = self.font.render(f"Pressure: {self.grinding_pressure:.1f}", True, WHITE)
-        self.screen.blit(pressure_text, (20, 50))
-        angle_text = self.font.render(f"Angle: {self.grinding_angle}°", True, WHITE)
-        self.screen.blit(angle_text, (20, 80))
-
-    def run(self):
-        running = True
-        while running:
-            running = self.handle_events()
-            self.update()
-            self.screen.fill(BLACK)
-            self.draw_cylinder()
-            self.draw_grinding_tool()
-            self.draw_ui()
-            pygame.display.flip()
-            self.clock.tick(60)
-
-if __name__ == "__main__":
-    GrindingGame().run()
-</script>
+new_button = html.BUTTON("Klick mich!")
+new_button.bind("click", button_click)
+document["output"] <= new_button`;
+                    break;
+                
+                default:
+                    return;
+            }
+            
+            document.getElementById("code").value = code;
+        }
+    </script>
 </body>
 </html>
